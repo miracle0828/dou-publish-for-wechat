@@ -1,4 +1,5 @@
 import { App, ItemView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, requestUrl } from "obsidian";
+import { clipboard, nativeImage, type NativeImage } from "electron";
 import { createHash } from "node:crypto";
 import { extname } from "node:path";
 import { friendlyWechatError, isApprovedWechatImageUrl, prepareMarkdown, replaceImagePlaceholders, type ImageReference } from "./core";
@@ -10,6 +11,25 @@ const MAX_UPLOAD_BYTES = 1024 * 1024;
 interface PluginSettings { appId: string; appSecret: string; imageCache: Record<string, string>; }
 interface LoadedArticle { file: TFile; source: string; title: string; prepared: ReturnType<typeof prepareMarkdown>; buffers: Map<string, ArrayBuffer>; html: string; }
 const DEFAULT_SETTINGS: PluginSettings = { appId: "", appSecret: "", imageCache: {} };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function loadPluginSettings(value: unknown): PluginSettings {
+  if (!isRecord(value)) return { ...DEFAULT_SETTINGS };
+  const imageCache: Record<string, string> = {};
+  if (isRecord(value.imageCache)) {
+    for (const [key, url] of Object.entries(value.imageCache)) {
+      if (typeof url === "string") imageCache[key] = url;
+    }
+  }
+  return {
+    appId: typeof value.appId === "string" ? value.appId : "",
+    appSecret: typeof value.appSecret === "string" ? value.appSecret : "",
+    imageCache,
+  };
+}
 
 function mimeFor(path: string): string {
   const extension = extname(path).toLowerCase();
@@ -68,8 +88,7 @@ class WechatClient {
     if (bytes.length <= MAX_UPLOAD_BYTES && [".jpg", ".jpeg", ".png"].includes(extension)) {
       return { bytes, filename: extension === ".png" ? "image.png" : "image.jpg", mime: mimeFor(path) };
     }
-    const { nativeImage } = require("electron") as { nativeImage: { createFromBuffer(value: Buffer): any } };
-    let image = nativeImage.createFromBuffer(bytes);
+    let image: NativeImage = nativeImage.createFromBuffer(bytes);
     if (image.isEmpty()) throw new Error(`无法读取图片：${path}`);
     const size = image.getSize();
     if (size.width > 1920) image = image.resize({ width: 1920, quality: "best" });
@@ -183,7 +202,6 @@ class PreviewView extends ItemView {
       }
       const rendered = await renderWechatHtml(replaceImagePlaceholders(this.article.prepared.markdown, replacements), this.article.title);
       const safe = sanitizeHtml(rendered, true);
-      const { clipboard } = require("electron") as { clipboard: { write(data: { html: string; text: string }): void } };
       clipboard.write({ html: safe.fragment, text: safe.text });
       this.statusEl.setText(`已复制：${this.article.prepared.images.length} 张配图。到公众号正文区按 Ctrl+V；标题和封面单独填写。`);
       new Notice("已复制公众号格式和图片");
@@ -198,14 +216,13 @@ class SettingsTab extends PluginSettingTab {
   constructor(app: App, private plugin: DouPublishPlugin) { super(app, plugin); }
   display() {
     const container = this.containerEl; container.empty();
-    container.createEl("h2", { text: "Dou Publish for WeChat" });
     container.createEl("p", { text: "预览完全在本地完成。只有点击“复制到公众号”时，正文中的本地图片才会上传到微信；插件不会创建草稿，也不会自动发布文章。" });
     container.createEl("p", { cls: "setting-item-description", text: "AppID 与 AppSecret 保存在当前 Obsidian 仓库的插件 data.json 中，只会发送到微信官方接口 api.weixin.qq.com。公开分享仓库或截图前，请勿包含该 data.json。" });
-    new Setting(container).setName("公众号 AppID").setDesc("在微信公众平台的开发设置中查看。纯文字文章可留空。")
-      .addText(text => text.setPlaceholder("wx…").setValue(this.plugin.settings.appId).onChange(async value => { this.plugin.settings.appId = value.trim(); this.plugin.wechat.clearToken(); await this.plugin.saveSettings(); }));
-    new Setting(container).setName("公众号 AppSecret").setDesc("用于把本地配图上传到你的公众号素材服务。")
+    new Setting(container).setName("公众号 app ID").setDesc("在微信公众平台的开发设置中查看。纯文字文章可留空。")
+      .addText(text => text.setPlaceholder("Wx…").setValue(this.plugin.settings.appId).onChange(async value => { this.plugin.settings.appId = value.trim(); this.plugin.wechat.clearToken(); await this.plugin.saveSettings(); }));
+    new Setting(container).setName("公众号 app secret").setDesc("用于把本地配图上传到你的公众号素材服务。")
       .addText(text => { text.inputEl.type = "password"; text.setPlaceholder("仅保存在本机").setValue(this.plugin.settings.appSecret).onChange(async value => { this.plugin.settings.appSecret = value.trim(); this.plugin.wechat.clearToken(); await this.plugin.saveSettings(); }); });
-    new Setting(container).setName("测试公众号配置").setDesc("向微信申请一次访问凭证，检查 AppID、AppSecret 与 IP 白名单。")
+    new Setting(container).setName("测试公众号配置").setDesc("向微信申请一次访问凭证，检查 app ID、app secret 与 IP 白名单。")
       .addButton(button => button.setButtonText("测试").onClick(async () => {
         try { await this.plugin.wechat.accessToken(); new Notice("公众号配置可用"); }
         catch (error) { new Notice(error instanceof Error ? error.message : String(error), 8000); }
@@ -219,7 +236,8 @@ export default class DouPublishPlugin extends Plugin {
   settings: PluginSettings = { ...DEFAULT_SETTINGS };
   wechat = new WechatClient(this);
   async onload() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loaded: unknown = await this.loadData();
+    this.settings = loadPluginSettings(loaded);
     this.registerView(VIEW_TYPE, leaf => { const view = new PreviewView(leaf); view.plugin = this; return view; });
     this.addRibbonIcon("newspaper", "预览当前文章（公众号）", () => void this.openPreview());
     this.addCommand({ id: "preview-current-article", name: "预览当前文章", callback: () => void this.openPreview() });
@@ -232,7 +250,7 @@ export default class DouPublishPlugin extends Plugin {
     let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
     if (!leaf) leaf = this.app.workspace.getRightLeaf(false) as WorkspaceLeaf;
     await leaf.setViewState({ type: VIEW_TYPE, active: true });
-    this.app.workspace.revealLeaf(leaf);
+    await this.app.workspace.revealLeaf(leaf);
     await (leaf.view as PreviewView).loadArticle(file);
   }
 }

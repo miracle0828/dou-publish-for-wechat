@@ -1,5 +1,9 @@
 # Dou Publish for WeChat
 
+An Obsidian desktop plugin that previews Markdown using a WeChat-friendly theme and copies rich text, including hosted article images, into the WeChat Official Account editor. Open a Markdown note, preview it from the ribbon, configure your own WeChat App ID and app secret when local images need uploading, then choose **Copy to WeChat** and paste into the editor.
+
+The preview stays local. The plugin sends local article images only to the official `api.weixin.qq.com` endpoint after the user explicitly chooses to copy. Credentials remain in the current vault's plugin data file.
+
 一款桌面端 Obsidian 插件，用统一的公众号样式预览 Markdown，并把带格式正文和本地配图一键复制到微信公众号编辑器。
 
 ## 功能

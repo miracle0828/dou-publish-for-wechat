@@ -4,10 +4,10 @@ import { execFileSync } from "node:child_process";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 
-const output = path.join(process.cwd(), ".render-smoke.mjs");
+const output = path.join(process.cwd(), ".render-smoke.cjs");
 try {
   await esbuild.build({
-    entryPoints: ["tests/render.test.ts"], bundle: true, format: "esm",
+    entryPoints: ["tests/render.test.ts"], bundle: true, format: "cjs",
     platform: "node", target: "node18", external: builtins,
     loader: { ".css": "text" }, outfile: output, logLevel: "silent",
   });
