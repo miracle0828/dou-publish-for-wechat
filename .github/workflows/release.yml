@@ -19,7 +19,9 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Build installation archive
+        run: zip "dou-publish-for-wechat-${GITHUB_REF_NAME#v}.zip" main.js manifest.json styles.css README.md LICENSE THIRD_PARTY_NOTICES.md
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" main.js manifest.json styles.css --generate-notes
+        run: gh release create "${GITHUB_REF_NAME}" main.js manifest.json styles.css "dou-publish-for-wechat-${GITHUB_REF_NAME#v}.zip" --generate-notes
