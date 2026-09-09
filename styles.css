@@ -1,0 +1,10 @@
+.dou-publish-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px !important;
+  gap: 10px;
+}
+.dou-toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.dou-status { font-size: 12px; color: var(--text-muted); line-height: 1.6; overflow-wrap: anywhere; }
+.dou-frame { width: 100%; flex: 1; min-height: 320px; border: 1px solid var(--background-modifier-border); background: white; border-radius: 8px; }

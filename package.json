@@ -1,0 +1,26 @@
+{
+  "name": "dou-publish-preview",
+  "version": "1.0.0",
+  "private": false,
+  "license": "MIT",
+  "author": "Doudou",
+  "keywords": ["obsidian", "wechat", "markdown", "publisher"],
+  "description": "Obsidian preview and rich-text copy for WeChat Official Accounts",
+  "scripts": {
+    "build": "node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs",
+    "test": "tsx --test tests/core.test.ts && node scripts/render-smoke.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "^1.8.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "baoyu-md": "^0.1.0"
+  }
+}
