@@ -33,3 +33,14 @@ test("replaces image placeholders", () => {
   const dataUrl = "data:image/png;base64,aGVsbG8=";
   assert.equal(replaceImagePlaceholders(source, new Map([["https://dou-publish.local/image/0", dataUrl]])), `![](${dataUrl})`);
 });
+
+test("does not confuse image 1 with image 10", () => {
+  const first = "https://dou-publish.local/image/1";
+  const tenth = "https://dou-publish.local/image/10";
+  const source = `![](${first})\n![](${tenth})`;
+  const replacements = new Map([[first, "data:image/png;base64,ONE"], [tenth, "data:image/png;base64,TEN"]]);
+  assert.equal(
+    replaceImagePlaceholders(source, replacements),
+    "![](data:image/png;base64,ONE)\n![](data:image/png;base64,TEN)",
+  );
+});

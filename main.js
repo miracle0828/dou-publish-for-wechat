@@ -48616,7 +48616,8 @@ ${body}`,
 }
 function replaceImagePlaceholders(markdown2, replacements) {
   let output = markdown2;
-  for (const [placeholder, url] of replacements) output = output.split(placeholder).join(url);
+  const longestFirst = [...replacements.entries()].sort(([left], [right]) => right.length - left.length);
+  for (const [placeholder, url] of longestFirst) output = output.split(placeholder).join(url);
   return output;
 }
 

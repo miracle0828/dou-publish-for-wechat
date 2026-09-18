@@ -79,6 +79,7 @@ export function prepareMarkdown(markdown: string, title: string): PreparedMarkdo
 
 export function replaceImagePlaceholders(markdown: string, replacements: Map<string, string>): string {
   let output = markdown;
-  for (const [placeholder, url] of replacements) output = output.split(placeholder).join(url);
+  const longestFirst = [...replacements.entries()].sort(([left], [right]) => right.length - left.length);
+  for (const [placeholder, url] of longestFirst) output = output.split(placeholder).join(url);
   return output;
 }

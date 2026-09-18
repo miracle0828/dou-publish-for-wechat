@@ -14,6 +14,7 @@ Previewing and copying stay local. Local images are embedded into the rich-text 
 - 一键复制行内样式和正文图片，粘贴到微信公众号编辑器
 - 自动把较大的静态图片压缩为适合公众号粘贴的 JPEG
 - 复制前检查图片数量、体积和无法读取的图片
+- 支持包含 10 张以上图片的长文预览与复制，不会混淆图片位置
 - 将任务列表转换为公众号可稳定显示的 `☐` 与 `☑`
 - 可调整主题色、正文字号、行高、段落间距、引用样式、代码行号和图片圆角
 - 无需公众号 AppID、AppSecret 或 IP 白名单
