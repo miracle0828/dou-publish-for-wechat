@@ -1,8 +1,8 @@
 # Dou Publish for WeChat
 
-An Obsidian desktop plugin that previews Markdown using a WeChat-friendly theme and copies rich text, including hosted article images, into the WeChat Official Account editor. Open a Markdown note, preview it from the ribbon, configure your own WeChat App ID and app secret when local images need uploading, then choose **Copy to WeChat** and paste into the editor.
+An Obsidian desktop plugin that previews Markdown using a WeChat-friendly theme and copies rich text, including local article images, into the WeChat Official Account editor. Open a Markdown note, preview it from the ribbon, choose **Copy to WeChat**, and paste into the editor. No WeChat API credentials are required for copying.
 
-The preview stays local. The plugin sends local article images only to the official `api.weixin.qq.com` endpoint after the user explicitly chooses to copy. Credentials remain in the current vault's plugin data file.
+Previewing and copying stay local. Local images are embedded into the rich-text clipboard and are not uploaded by the plugin.
 
 一款桌面端 Obsidian 插件，用统一的公众号样式预览 Markdown，并把带格式正文和本地配图一键复制到微信公众号编辑器。
 
@@ -11,8 +11,8 @@ The preview stays local. The plugin sends local article images only to the offic
 - 在 Obsidian 侧栏预览公众号排版
 - 支持 Markdown 图片与 Obsidian 图片嵌入 `![[image.png]]`
 - 一键复制行内样式和正文图片，粘贴到微信公众号编辑器
-- 自动把较大的静态图片压缩为适合微信正文的 JPEG
-- 按图片内容缓存微信地址，重复复制无需再次上传
+- 自动把较大的静态图片压缩为适合公众号粘贴的 JPEG
+- 无需公众号 AppID、AppSecret 或 IP 白名单
 - 不创建草稿，不自动发布文章
 
 ## 安装
@@ -51,18 +51,16 @@ npm run build
 
 1. 打开 Markdown 文章。
 2. 点击左侧报纸图标，检查右侧预览。
-3. 纯文字文章可直接点击“复制到公众号”。
-4. 正文含本地图片时，先在插件设置中填写自己的公众号 AppID 与 AppSecret，并在微信公众平台配置调用 IP 白名单。
-5. 点击“复制到公众号”，到公众号正文编辑区按 `Ctrl+V`。标题与封面仍在公众号后台单独填写。
+3. 点击“复制到公众号”。插件会把本地图片转换为剪贴板图片数据，无需配置公众号接口。
+4. 到公众号正文编辑区按 `Ctrl+V`。标题与封面仍在公众号后台单独填写。
 
-外链图片不会被插件自动下载，请先保存到 Obsidian 仓库。GIF 超过 1 MB 时需要先手动压缩。
+外链图片不会被插件自动下载，请先保存到 Obsidian 仓库。GIF 超过 10 MB 时仍可复制，但粘贴可能较慢。
 
 ## 隐私与安全
 
 - 预览在本机完成，不上传正文。
-- 只有用户点击“复制到公众号”时，正文内的本地图片才会发送到微信官方接口 `api.weixin.qq.com`。
-- AppID、AppSecret 与图片缓存保存在当前仓库的 `.obsidian/plugins/dou-publish-preview/data.json`。不要把这个文件提交到公开仓库或发给其他人。
-- 插件不会把凭据或文章发送到开发者服务器。
+- 点击“复制到公众号”时，本地图片会转换为 Base64 图片并写入系统富文本剪贴板。
+- 插件不需要公众号凭据，不调用微信 API，也不会把文章或图片发送到开发者服务器。
 - 预览使用受限 iframe；复制前会移除脚本、嵌入对象、事件属性和不安全链接。
 
 ## 开发
@@ -76,4 +74,4 @@ npm run build
 npm run package
 ```
 
-排版引擎使用开源包 `baoyu-md`。插件参考了 WeSight“先上传图片，再复制富文本”的工作顺序，未复制其源码。
+排版引擎使用开源包 `baoyu-md`。零配置图片复制流程参考了 Wechat Converter 的“本地图片转 Data URL 后写入富文本剪贴板”方案，未复制其源码。

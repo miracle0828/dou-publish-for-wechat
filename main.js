@@ -48539,7 +48539,6 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var import_electron = require("electron");
-var import_node_crypto = require("node:crypto");
 var import_node_path2 = require("node:path");
 
 // src/core.ts
@@ -48606,27 +48605,6 @@ function replaceImagePlaceholders(markdown2, replacements) {
   let output = markdown2;
   for (const [placeholder, url] of replacements) output = output.split(placeholder).join(url);
   return output;
-}
-function friendlyWechatError(code2, message) {
-  var _a3;
-  const known = {
-    40001: "\u5FAE\u4FE1\u8BBF\u95EE\u51ED\u8BC1\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u64CD\u4F5C\u3002",
-    40013: "\u516C\u4F17\u53F7 AppID \u65E0\u6548\uFF0C\u8BF7\u68C0\u67E5\u63D2\u4EF6\u8BBE\u7F6E\u3002",
-    40125: "\u516C\u4F17\u53F7 AppSecret \u65E0\u6548\uFF0C\u8BF7\u68C0\u67E5\u63D2\u4EF6\u8BBE\u7F6E\u3002",
-    40164: "\u5FAE\u4FE1\u672A\u5141\u8BB8\u5F53\u524D\u51FA\u53E3 IP\uFF0C\u8BF7\u5728\u516C\u4F17\u53F7\u540E\u53F0\u7684 IP \u767D\u540D\u5355\u4E2D\u6DFB\u52A0\u5B83\u3002",
-    42001: "\u5FAE\u4FE1\u8BBF\u95EE\u51ED\u8BC1\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u64CD\u4F5C\u3002",
-    45009: "\u5FAE\u4FE1\u63A5\u53E3\u8C03\u7528\u6B21\u6570\u5DF2\u8FBE\u4E0A\u9650\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\u3002",
-    48001: "\u5F53\u524D\u516C\u4F17\u53F7\u6CA1\u6709\u6B63\u6587\u56FE\u7247\u4E0A\u4F20\u63A5\u53E3\u6743\u9650\u3002"
-  };
-  return (_a3 = known[code2 != null ? code2 : -1]) != null ? _a3 : `\u5FAE\u4FE1\u56FE\u7247\u5904\u7406\u5931\u8D25\uFF08\u9519\u8BEF\u7801 ${code2 != null ? code2 : "\u672A\u77E5"}${message ? `\uFF1A${message}` : ""}\uFF09\u3002`;
-}
-function isApprovedWechatImageUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "mmbiz.qpic.cn" || url.hostname.endsWith(".mmbiz.qpic.cn"));
-  } catch (e) {
-    return false;
-  }
 }
 
 // node_modules/baoyu-md/dist/themes/base.css
@@ -76538,36 +76516,40 @@ async function renderWechatHtml(markdown2, title) {
 
 // src/main.ts
 var VIEW_TYPE = "dou-publish-preview";
-var MAX_UPLOAD_BYTES = 1024 * 1024;
-var DEFAULT_SETTINGS = { appId: "", appSecret: "", imageCache: {} };
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function loadPluginSettings(value) {
-  if (!isRecord(value)) return { ...DEFAULT_SETTINGS };
-  const imageCache = {};
-  if (isRecord(value.imageCache)) {
-    for (const [key, url] of Object.entries(value.imageCache)) {
-      if (typeof url === "string") imageCache[key] = url;
-    }
-  }
-  return {
-    appId: typeof value.appId === "string" ? value.appId : "",
-    appSecret: typeof value.appSecret === "string" ? value.appSecret : "",
-    imageCache
-  };
-}
+var MAX_STATIC_IMAGE_BYTES = 2 * 1024 * 1024;
+var LARGE_GIF_BYTES = 10 * 1024 * 1024;
 function mimeFor(path) {
   const extension2 = (0, import_node_path2.extname)(path).toLowerCase();
   return extension2 === ".png" ? "image/png" : extension2 === ".gif" ? "image/gif" : extension2 === ".webp" ? "image/webp" : "image/jpeg";
 }
-function toDataUrl(buffer, path) {
-  return `data:${mimeFor(path)};base64,${Buffer.from(buffer).toString("base64")}`;
+function toDataUrl(buffer, mime) {
+  return `data:${mime};base64,${Buffer.from(buffer).toString("base64")}`;
 }
-function exactArrayBuffer(value) {
-  return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+function isSafeImageDataUrl(value) {
+  return /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(value);
 }
-function sanitizeHtml(html3, copying) {
+function clipboardImageDataUrl(input, path) {
+  const original = Buffer.from(input);
+  const extension2 = (0, import_node_path2.extname)(path).toLowerCase();
+  if (extension2 === ".gif") {
+    return { url: toDataUrl(original, "image/gif"), largeGif: original.length > LARGE_GIF_BYTES };
+  }
+  if (original.length <= MAX_STATIC_IMAGE_BYTES && [".jpg", ".jpeg", ".png", ".webp"].includes(extension2)) {
+    return { url: toDataUrl(original, mimeFor(path)), largeGif: false };
+  }
+  let image2 = import_electron.nativeImage.createFromBuffer(original);
+  if (image2.isEmpty()) throw new Error(`\u65E0\u6CD5\u8BFB\u53D6\u56FE\u7247\uFF1A${path}`);
+  const size = image2.getSize();
+  if (size.width > 1920) image2 = image2.resize({ width: 1920, quality: "best" });
+  let compressed = image2.toJPEG(82);
+  for (const quality of [75, 68, 60, 52, 45]) {
+    if (compressed.length <= MAX_STATIC_IMAGE_BYTES) break;
+    compressed = image2.toJPEG(quality);
+  }
+  if (compressed.length > MAX_STATIC_IMAGE_BYTES) throw new Error(`\u56FE\u7247\u538B\u7F29\u540E\u4ECD\u8FC7\u5927\uFF0C\u8BF7\u5148\u7F29\u5C0F\uFF1A${path}`);
+  return { url: toDataUrl(compressed, "image/jpeg"), largeGif: false };
+}
+function sanitizeHtml(html3) {
   var _a3, _b2;
   const parsed = new DOMParser().parseFromString(html3, "text/html");
   parsed.querySelectorAll("script,iframe,object,embed,form,input,button,link,meta,base").forEach((el) => el.remove());
@@ -76577,91 +76559,23 @@ function sanitizeHtml(html3, copying) {
       if (attribute.name === "href" && !/^(https?:|mailto:|#)/i.test(attribute.value.trim())) el.removeAttribute(attribute.name);
       if (attribute.name === "src") {
         const src = attribute.value.trim();
-        const allowed = copying ? isApprovedWechatImageUrl(src) : /^(data:image\/|https:\/\/dou-publish\.local\/)/i.test(src);
-        if (!allowed) el.removeAttribute(attribute.name);
+        if (!isSafeImageDataUrl(src) && !/^https:\/\/dou-publish\.local\//i.test(src)) el.removeAttribute(attribute.name);
       }
     }
   });
   const output = (_a3 = parsed.getElementById("output")) != null ? _a3 : parsed.body;
   return { documentHtml: `<!doctype html>${parsed.documentElement.outerHTML}`, fragment: output.innerHTML, text: (_b2 = output.textContent) != null ? _b2 : "" };
 }
-var WechatClient = class {
-  constructor(plugin) {
-    this.plugin = plugin;
+async function writeRichClipboard(html3, text4) {
+  if (!navigator.clipboard || typeof navigator.clipboard.write !== "function" || typeof ClipboardItem === "undefined") {
+    throw new Error("\u5F53\u524D Obsidian \u73AF\u5883\u4E0D\u652F\u6301\u5BCC\u6587\u672C\u526A\u8D34\u677F\uFF0C\u8BF7\u5347\u7EA7\u684C\u9762\u7248 Obsidian\u3002");
   }
-  async accessToken() {
-    var _a3;
-    if (this.token && Date.now() < this.token.expiresAt) return this.token.value;
-    const { appId, appSecret } = this.plugin.settings;
-    if (!appId || !appSecret) throw new Error("\u6B63\u6587\u4E2D\u6709\u56FE\u7247\u3002\u8BF7\u5148\u5728\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u586B\u5199\u516C\u4F17\u53F7 AppID \u548C AppSecret\u3002");
-    const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${encodeURIComponent(appId)}&secret=${encodeURIComponent(appSecret)}`;
-    const response = await (0, import_obsidian.requestUrl)({ url, method: "GET", throw: false });
-    const data = response.json;
-    if (!data.access_token) throw new Error(friendlyWechatError(data.errcode, data.errmsg));
-    this.token = { value: data.access_token, expiresAt: Date.now() + Math.max(60, ((_a3 = data.expires_in) != null ? _a3 : 7200) - 300) * 1e3 };
-    return data.access_token;
-  }
-  normalizeImage(input, path) {
-    let bytes = Buffer.from(input);
-    const extension2 = (0, import_node_path2.extname)(path).toLowerCase();
-    if (extension2 === ".gif") {
-      if (bytes.length > MAX_UPLOAD_BYTES) throw new Error(`GIF \u56FE\u7247\u8D85\u8FC7 1 MB\uFF0C\u8BF7\u5148\u538B\u7F29\uFF1A${path}`);
-      return { bytes, filename: "image.gif", mime: "image/gif" };
-    }
-    if (bytes.length <= MAX_UPLOAD_BYTES && [".jpg", ".jpeg", ".png"].includes(extension2)) {
-      return { bytes, filename: extension2 === ".png" ? "image.png" : "image.jpg", mime: mimeFor(path) };
-    }
-    let image2 = import_electron.nativeImage.createFromBuffer(bytes);
-    if (image2.isEmpty()) throw new Error(`\u65E0\u6CD5\u8BFB\u53D6\u56FE\u7247\uFF1A${path}`);
-    const size = image2.getSize();
-    if (size.width > 1920) image2 = image2.resize({ width: 1920, quality: "best" });
-    for (const quality of [88, 82, 75, 68, 60, 52, 45]) {
-      bytes = image2.toJPEG(quality);
-      if (bytes.length <= MAX_UPLOAD_BYTES) return { bytes, filename: "image.jpg", mime: "image/jpeg" };
-    }
-    throw new Error(`\u56FE\u7247\u538B\u7F29\u540E\u4ECD\u8D85\u8FC7 1 MB\uFF0C\u8BF7\u624B\u52A8\u7F29\u5C0F\uFF1A${path}`);
-  }
-  async upload(image2, buffer) {
-    const account = this.plugin.settings.appId;
-    const hash = (0, import_node_crypto.createHash)("sha256").update(account).update(Buffer.from(buffer)).digest("hex");
-    const cached = this.plugin.settings.imageCache[hash];
-    if (cached && isApprovedWechatImageUrl(cached)) return cached;
-    const normalized = this.normalizeImage(buffer, image2.originalPath);
-    const boundary = `----DouPublish${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
-    const header = Buffer.from(`--${boundary}\r
-Content-Disposition: form-data; name="media"; filename="${normalized.filename}"\r
-Content-Type: ${normalized.mime}\r
-\r
-`);
-    const footer = Buffer.from(`\r
---${boundary}--\r
-`);
-    const body = Buffer.concat([header, normalized.bytes, footer]);
-    const send = async () => {
-      const token = await this.accessToken();
-      const response = await (0, import_obsidian.requestUrl)({
-        url: `https://api.weixin.qq.com/cgi-bin/media/uploadimg?access_token=${encodeURIComponent(token)}`,
-        method: "POST",
-        headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
-        body: exactArrayBuffer(body),
-        throw: false
-      });
-      return response.json;
-    };
-    let data = await send();
-    if (data.errcode === 40001 || data.errcode === 42001) {
-      this.clearToken();
-      data = await send();
-    }
-    if (!data.url || !isApprovedWechatImageUrl(data.url)) throw new Error(friendlyWechatError(data.errcode, data.errmsg));
-    this.plugin.settings.imageCache[hash] = data.url;
-    await this.plugin.saveSettings();
-    return data.url;
-  }
-  clearToken() {
-    this.token = void 0;
-  }
-};
+  const item = new ClipboardItem({
+    "text/html": new Blob([html3], { type: "text/html" }),
+    "text/plain": new Blob([text4], { type: "text/plain" })
+  });
+  await navigator.clipboard.write([item]);
+}
 var PreviewView = class extends import_obsidian.ItemView {
   constructor() {
     super(...arguments);
@@ -76719,12 +76633,12 @@ var PreviewView = class extends import_obsidian.ItemView {
         if (!target) throw new Error(`\u627E\u4E0D\u5230\u914D\u56FE\uFF1A${image2.originalPath}`);
         const buffer = await this.app.vault.readBinary(target);
         buffers.set(image2.placeholder, buffer);
-        previewReplacements.set(image2.placeholder, toDataUrl(buffer, target.path));
+        previewReplacements.set(image2.placeholder, toDataUrl(buffer, mimeFor(target.path)));
       }
-      const html3 = sanitizeHtml(await renderWechatHtml(replaceImagePlaceholders(prepared.markdown, previewReplacements), title), false).documentHtml;
+      const html3 = sanitizeHtml(await renderWechatHtml(replaceImagePlaceholders(prepared.markdown, previewReplacements), title)).documentHtml;
       this.article = { file, source: source2, title, prepared, buffers, html: html3 };
       this.frame.srcdoc = html3;
-      this.statusEl.setText(`${title} \xB7 ${prepared.images.length} \u5F20\u914D\u56FE \xB7 \u9884\u89C8\u4E0D\u4F1A\u4E0A\u4F20\u56FE\u7247`);
+      this.statusEl.setText(`${title} \xB7 ${prepared.images.length} \u5F20\u914D\u56FE \xB7 \u5168\u7A0B\u672C\u5730\u9884\u89C8`);
     } catch (error) {
       this.article = void 0;
       this.frame.srcdoc = "";
@@ -76745,21 +76659,25 @@ var PreviewView = class extends import_obsidian.ItemView {
     }
     this.busy = true;
     this.updateButtons();
-    this.statusEl.setText("\u6B63\u5728\u51C6\u5907\u56FE\u7247\u548C\u5E26\u683C\u5F0F\u6B63\u6587\u2026");
+    this.statusEl.setText("\u6B63\u5728\u628A\u56FE\u7247\u5199\u5165\u5BCC\u6587\u672C\u526A\u8D34\u677F\u2026");
     try {
       const replacements = /* @__PURE__ */ new Map();
+      const largeGifs = [];
       for (let index2 = 0; index2 < this.article.prepared.images.length; index2++) {
         const image2 = this.article.prepared.images[index2];
         this.statusEl.setText(`\u6B63\u5728\u5904\u7406\u7B2C ${index2 + 1}/${this.article.prepared.images.length} \u5F20\u56FE\u7247\u2026`);
         const buffer = this.article.buffers.get(image2.placeholder);
         if (!buffer) throw new Error(`\u7F3A\u5C11\u56FE\u7247\u6570\u636E\uFF1A${image2.originalPath}`);
-        replacements.set(image2.placeholder, await this.plugin.wechat.upload(image2, buffer));
+        const result = clipboardImageDataUrl(buffer, image2.originalPath);
+        replacements.set(image2.placeholder, result.url);
+        if (result.largeGif) largeGifs.push(image2.originalPath);
       }
       const rendered = await renderWechatHtml(replaceImagePlaceholders(this.article.prepared.markdown, replacements), this.article.title);
-      const safe2 = sanitizeHtml(rendered, true);
-      import_electron.clipboard.write({ html: safe2.fragment, text: safe2.text });
-      this.statusEl.setText(`\u5DF2\u590D\u5236\uFF1A${this.article.prepared.images.length} \u5F20\u914D\u56FE\u3002\u5230\u516C\u4F17\u53F7\u6B63\u6587\u533A\u6309 Ctrl+V\uFF1B\u6807\u9898\u548C\u5C01\u9762\u5355\u72EC\u586B\u5199\u3002`);
-      new import_obsidian.Notice("\u5DF2\u590D\u5236\u516C\u4F17\u53F7\u683C\u5F0F\u548C\u56FE\u7247");
+      const safe2 = sanitizeHtml(rendered);
+      await writeRichClipboard(safe2.fragment, safe2.text);
+      const warning = largeGifs.length ? `\uFF1B${largeGifs.length} \u5F20 GIF \u8D85\u8FC7 10 MB\uFF0C\u7C98\u8D34\u53EF\u80FD\u8F83\u6162` : "";
+      this.statusEl.setText(`\u5DF2\u590D\u5236\uFF1A${this.article.prepared.images.length} \u5F20\u914D\u56FE${warning}\u3002\u5230\u516C\u4F17\u53F7\u6B63\u6587\u533A\u6309 Ctrl+V\u3002`);
+      new import_obsidian.Notice(largeGifs.length ? "\u5DF2\u590D\u5236\uFF0C\u8F83\u5927\u7684 GIF \u7C98\u8D34\u53EF\u80FD\u8F83\u6162" : "\u5DF2\u590D\u5236\u516C\u4F17\u53F7\u683C\u5F0F\u548C\u56FE\u7247");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.statusEl.setText(message);
@@ -76770,64 +76688,11 @@ var PreviewView = class extends import_obsidian.ItemView {
     }
   }
 };
-var SettingsTab = class extends import_obsidian.PluginSettingTab {
-  constructor(app, plugin) {
-    super(app, plugin);
-    this.plugin = plugin;
-  }
-  display() {
-    const container = this.containerEl;
-    container.empty();
-    container.createEl("p", { text: "\u9884\u89C8\u5B8C\u5168\u5728\u672C\u5730\u5B8C\u6210\u3002\u53EA\u6709\u70B9\u51FB\u201C\u590D\u5236\u5230\u516C\u4F17\u53F7\u201D\u65F6\uFF0C\u6B63\u6587\u4E2D\u7684\u672C\u5730\u56FE\u7247\u624D\u4F1A\u4E0A\u4F20\u5230\u5FAE\u4FE1\uFF1B\u63D2\u4EF6\u4E0D\u4F1A\u521B\u5EFA\u8349\u7A3F\uFF0C\u4E5F\u4E0D\u4F1A\u81EA\u52A8\u53D1\u5E03\u6587\u7AE0\u3002" });
-    container.createEl("p", { cls: "setting-item-description", text: "AppID \u4E0E AppSecret \u4FDD\u5B58\u5728\u5F53\u524D Obsidian \u4ED3\u5E93\u7684\u63D2\u4EF6 data.json \u4E2D\uFF0C\u53EA\u4F1A\u53D1\u9001\u5230\u5FAE\u4FE1\u5B98\u65B9\u63A5\u53E3 api.weixin.qq.com\u3002\u516C\u5F00\u5206\u4EAB\u4ED3\u5E93\u6216\u622A\u56FE\u524D\uFF0C\u8BF7\u52FF\u5305\u542B\u8BE5 data.json\u3002" });
-    new import_obsidian.Setting(container).setName("\u516C\u4F17\u53F7 app ID").setDesc("\u5728\u5FAE\u4FE1\u516C\u4F17\u5E73\u53F0\u7684\u5F00\u53D1\u8BBE\u7F6E\u4E2D\u67E5\u770B\u3002\u7EAF\u6587\u5B57\u6587\u7AE0\u53EF\u7559\u7A7A\u3002").addText((text4) => text4.setPlaceholder("Wx\u2026").setValue(this.plugin.settings.appId).onChange(async (value) => {
-      this.plugin.settings.appId = value.trim();
-      this.plugin.wechat.clearToken();
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian.Setting(container).setName("\u516C\u4F17\u53F7 app secret").setDesc("\u7528\u4E8E\u628A\u672C\u5730\u914D\u56FE\u4E0A\u4F20\u5230\u4F60\u7684\u516C\u4F17\u53F7\u7D20\u6750\u670D\u52A1\u3002").addText((text4) => {
-      text4.inputEl.type = "password";
-      text4.setPlaceholder("\u4EC5\u4FDD\u5B58\u5728\u672C\u673A").setValue(this.plugin.settings.appSecret).onChange(async (value) => {
-        this.plugin.settings.appSecret = value.trim();
-        this.plugin.wechat.clearToken();
-        await this.plugin.saveSettings();
-      });
-    });
-    new import_obsidian.Setting(container).setName("\u6D4B\u8BD5\u516C\u4F17\u53F7\u914D\u7F6E").setDesc("\u5411\u5FAE\u4FE1\u7533\u8BF7\u4E00\u6B21\u8BBF\u95EE\u51ED\u8BC1\uFF0C\u68C0\u67E5 app ID\u3001app secret \u4E0E IP \u767D\u540D\u5355\u3002").addButton((button) => button.setButtonText("\u6D4B\u8BD5").onClick(async () => {
-      try {
-        await this.plugin.wechat.accessToken();
-        new import_obsidian.Notice("\u516C\u4F17\u53F7\u914D\u7F6E\u53EF\u7528");
-      } catch (error) {
-        new import_obsidian.Notice(error instanceof Error ? error.message : String(error), 8e3);
-      }
-    }));
-    new import_obsidian.Setting(container).setName("\u6E05\u9664\u56FE\u7247\u5730\u5740\u7F13\u5B58").setDesc("\u4E0B\u6B21\u590D\u5236\u65F6\u4F1A\u91CD\u65B0\u4E0A\u4F20\u6B63\u6587\u914D\u56FE\u3002").addButton((button) => button.setButtonText("\u6E05\u9664\u7F13\u5B58").onClick(async () => {
-      this.plugin.settings.imageCache = {};
-      await this.plugin.saveSettings();
-      new import_obsidian.Notice("\u56FE\u7247\u7F13\u5B58\u5DF2\u6E05\u9664");
-    }));
-  }
-};
 var DouPublishPlugin = class extends import_obsidian.Plugin {
-  constructor() {
-    super(...arguments);
-    this.settings = { ...DEFAULT_SETTINGS };
-    this.wechat = new WechatClient(this);
-  }
   async onload() {
-    const loaded = await this.loadData();
-    this.settings = loadPluginSettings(loaded);
-    this.registerView(VIEW_TYPE, (leaf) => {
-      const view = new PreviewView(leaf);
-      view.plugin = this;
-      return view;
-    });
+    this.registerView(VIEW_TYPE, (leaf) => new PreviewView(leaf));
     this.addRibbonIcon("newspaper", "\u9884\u89C8\u5F53\u524D\u6587\u7AE0\uFF08\u516C\u4F17\u53F7\uFF09", () => void this.openPreview());
     this.addCommand({ id: "preview-current-article", name: "\u9884\u89C8\u5F53\u524D\u6587\u7AE0", callback: () => void this.openPreview() });
-    this.addSettingTab(new SettingsTab(this.app, this));
-  }
-  async saveSettings() {
-    await this.saveData(this.settings);
   }
   async openPreview() {
     const file = this.app.workspace.getActiveFile();

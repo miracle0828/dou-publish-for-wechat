@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { friendlyWechatError, isApprovedWechatImageUrl, prepareMarkdown, replaceImagePlaceholders } from "../src/core";
+import { prepareMarkdown, replaceImagePlaceholders } from "../src/core";
 
 test("removes a duplicate title and preserves other H1 as H2", () => {
   const result = prepareMarkdown("---\ntitle: old\n---\n# 文章\n正文\n# 结尾", "文章");
@@ -27,11 +27,6 @@ test("blocks remote images and unsafe raw HTML", () => {
 
 test("replaces image placeholders", () => {
   const source = "![](https://dou-publish.local/image/0)";
-  assert.equal(replaceImagePlaceholders(source, new Map([["https://dou-publish.local/image/0", "https://mmbiz.qpic.cn/a"]])), "![](https://mmbiz.qpic.cn/a)");
-});
-
-test("validates WeChat image hosts and explains common errors", () => {
-  assert.equal(isApprovedWechatImageUrl("https://mmbiz.qpic.cn/a"), true);
-  assert.equal(isApprovedWechatImageUrl("https://mmbiz.qpic.cn.evil.test/a"), false);
-  assert.match(friendlyWechatError(40164), /IP 白名单/);
+  const dataUrl = "data:image/png;base64,aGVsbG8=";
+  assert.equal(replaceImagePlaceholders(source, new Map([["https://dou-publish.local/image/0", dataUrl]])), `![](${dataUrl})`);
 });

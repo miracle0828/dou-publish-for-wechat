@@ -68,23 +68,3 @@ export function replaceImagePlaceholders(markdown: string, replacements: Map<str
   for (const [placeholder, url] of replacements) output = output.split(placeholder).join(url);
   return output;
 }
-
-export function friendlyWechatError(code: number | undefined, message?: string): string {
-  const known: Record<number, string> = {
-    40001: "微信访问凭证已失效，请重新操作。",
-    40013: "公众号 AppID 无效，请检查插件设置。",
-    40125: "公众号 AppSecret 无效，请检查插件设置。",
-    40164: "微信未允许当前出口 IP，请在公众号后台的 IP 白名单中添加它。",
-    42001: "微信访问凭证已过期，请重新操作。",
-    45009: "微信接口调用次数已达上限，请稍后再试。",
-    48001: "当前公众号没有正文图片上传接口权限。",
-  };
-  return known[code ?? -1] ?? `微信图片处理失败（错误码 ${code ?? "未知"}${message ? `：${message}` : ""}）。`;
-}
-
-export function isApprovedWechatImageUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "mmbiz.qpic.cn" || url.hostname.endsWith(".mmbiz.qpic.cn"));
-  } catch { return false; }
-}

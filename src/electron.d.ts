@@ -9,8 +9,4 @@ declare module "electron" {
   export const nativeImage: {
     createFromBuffer(buffer: Buffer): NativeImage;
   };
-
-  export const clipboard: {
-    write(data: { html?: string; text?: string }): void;
-  };
 }
