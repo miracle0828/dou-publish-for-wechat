@@ -2,6 +2,7 @@ export interface ImageReference {
   placeholder: string;
   originalPath: string;
   alt: string;
+  width?: number;
 }
 
 export interface PreparedMarkdown {
@@ -19,6 +20,14 @@ function cleanImagePath(raw: string): string {
   return value;
 }
 
+function parseImageWidth(value: string): { value: string; width?: number } {
+  const match = value.match(/\|\s*(\d{2,4})(?:x\d{2,4})?\s*$/i);
+  if (!match) return { value };
+  const width = Number(match[1]);
+  if (width < 32 || width > 1920) return { value };
+  return { value: value.slice(0, match.index).trim(), width };
+}
+
 export function prepareMarkdown(markdown: string, title: string): PreparedMarkdown {
   let body = markdown.replace(FRONTMATTER, "");
   if (DANGEROUS_HTML.test(body)) {
@@ -33,8 +42,12 @@ export function prepareMarkdown(markdown: string, title: string): PreparedMarkdo
   });
 
   const images: ImageReference[] = [];
-  const addImage = (rawPath: string, alt: string) => {
-    const originalPath = cleanImagePath(rawPath);
+  const addImage = (rawPath: string, rawAlt: string, wikiImage: boolean) => {
+    const pathInfo = wikiImage ? parseImageWidth(rawPath) : { value: rawPath };
+    const altInfo = wikiImage ? { value: rawAlt } : parseImageWidth(rawAlt);
+    const originalPath = cleanImagePath(pathInfo.value);
+    const alt = altInfo.value;
+    const width = pathInfo.width ?? altInfo.width;
     if (/^https?:\/\//i.test(originalPath)) {
       throw new Error("暂不自动获取外链图片，请先把图片保存到 Obsidian 仓库中。");
     }
@@ -42,13 +55,14 @@ export function prepareMarkdown(markdown: string, title: string): PreparedMarkdo
       throw new Error(`不支持的图片地址：${originalPath || rawPath}`);
     }
     const placeholder = `https://dou-publish.local/image/${images.length}`;
-    images.push({ placeholder, originalPath, alt });
-    return `![${alt}](${placeholder})`;
+    images.push({ placeholder, originalPath, alt, width });
+    const widthMarker = width ? ` "dou-width-${width}"` : "";
+    return `![${alt}](${placeholder}${widthMarker})`;
   };
 
   body = body.replace(/!\[\[([^\]]+)\]\]|!\[([^\]]*)\]\((<[^>]+>|[^\n]+?)\)/g,
     (_match, wikiPath: string | undefined, alt: string | undefined, markdownPath: string | undefined) =>
-      addImage(wikiPath ?? markdownPath ?? "", alt ?? ""));
+      addImage(wikiPath ?? markdownPath ?? "", alt ?? "", wikiPath !== undefined));
 
   body = body.split("\n").map(line => {
     if (!/^# /.test(line)) return line;

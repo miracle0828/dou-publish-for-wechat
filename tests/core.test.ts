@@ -9,8 +9,11 @@ test("removes a duplicate title and preserves other H1 as H2", () => {
 });
 
 test("extracts wiki and standard local images", () => {
-  const result = prepareMarkdown("![[photo.png|400]]\n![](image with spaces.png)", "文章");
+  const result = prepareMarkdown("![[photo.png|400]]\n![说明|520](image with spaces.png)", "文章");
   assert.deepEqual(result.images.map(image => image.originalPath), ["photo.png", "image with spaces.png"]);
+  assert.deepEqual(result.images.map(image => image.width), [400, 520]);
+  assert.match(result.markdown, /dou-width-400/);
+  assert.match(result.markdown, /dou-width-520/);
   assert.match(result.markdown, /dou-publish\.local\/image\/1/);
 });
 

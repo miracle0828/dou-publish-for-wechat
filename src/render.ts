@@ -12,6 +12,48 @@ interface WechatStyle {
   blockquoteBackground: string;
   accentColor: string;
   containerBg: string;
+  lineHeight: string;
+  paragraphSpacing: string;
+  imageRadius: string;
+}
+
+export interface WechatStyleSettings {
+  primaryColor: string;
+  fontSize: number;
+  lineHeight: number;
+  paragraphSpacing: number;
+  blockquoteStyle: "neutral" | "accent";
+  showLineNumbers: boolean;
+  imageRadius: number;
+}
+
+export const DEFAULT_WECHAT_STYLE_SETTINGS: WechatStyleSettings = {
+  primaryColor: "#0F4C81",
+  fontSize: 16,
+  lineHeight: 1.75,
+  paragraphSpacing: 12,
+  blockquoteStyle: "neutral",
+  showLineNumbers: false,
+  imageRadius: 0,
+};
+
+function clamp(value: number, minimum: number, maximum: number, fallback: number): number {
+  return Number.isFinite(value) ? Math.min(maximum, Math.max(minimum, value)) : fallback;
+}
+
+function normalizeSettings(settings?: Partial<WechatStyleSettings>): WechatStyleSettings {
+  const primaryColor = /^#[0-9a-f]{6}$/i.test(settings?.primaryColor ?? "")
+    ? settings!.primaryColor!
+    : DEFAULT_WECHAT_STYLE_SETTINGS.primaryColor;
+  return {
+    primaryColor,
+    fontSize: clamp(settings?.fontSize ?? 16, 14, 20, 16),
+    lineHeight: clamp(settings?.lineHeight ?? 1.75, 1.4, 2.2, 1.75),
+    paragraphSpacing: clamp(settings?.paragraphSpacing ?? 12, 0, 32, 12),
+    blockquoteStyle: settings?.blockquoteStyle === "accent" ? "accent" : "neutral",
+    showLineNumbers: Boolean(settings?.showLineNumbers),
+    imageRadius: clamp(settings?.imageRadius ?? 0, 0, 24, 0),
+  };
 }
 
 function normalizeThemeCss(css: string): string {
@@ -38,12 +80,30 @@ body {
   padding: 24px;
   background: #ffffff;
 }
+`.trim();
 
+  const overrides = `
 #output {
   max-width: 860px;
   margin: 0 auto;
+  font-size: ${style.fontSize};
+  line-height: ${style.lineHeight};
+}
+
+#output .container {
+  font-size: ${style.fontSize};
+  line-height: ${style.lineHeight};
+}
+
+#output p {
+  margin-top: 0;
+  margin-bottom: ${style.paragraphSpacing};
+}
+
+#output img {
+  border-radius: ${style.imageRadius};
 }`.trim();
-  return [variables, baseCss, themeCss].join("\n\n");
+  return [variables, baseCss, themeCss, overrides].join("\n\n");
 }
 
 function escapeHtmlAttribute(value: string): string {
@@ -88,26 +148,43 @@ function modifyHtmlStructure(html: string): string {
   const nestedList = /<li([^>]*)>([\s\S]*?)(<ul[\s\S]*?<\/ul>|<ol[\s\S]*?<\/ol>)<\/li>/i;
   let output = html;
   while (nestedList.test(output)) output = output.replace(nestedList, "<li$1>$2</li>$3");
+  output = output
+    .replace(/(<li\b[^>]*>)\s*•?\s*\[\s\]\s*/gi, "$1☐ ")
+    .replace(/(<li\b[^>]*>)\s*•?\s*\[[xX]\]\s*/g, "$1☑ ");
+  output = output.replace(/<input\b([^>]*\btype=["']checkbox["'][^>]*)>/gi, (_match, attributes: string) => {
+    const checked = /(?:^|\s)checked(?:\s|=|$)/i.test(attributes);
+    return `<span aria-hidden="true">${checked ? "☑" : "☐"}</span>`;
+  });
   return output;
 }
 
-export async function renderWechatHtml(markdown: string, title: string): Promise<string> {
+function applyImageWidths(html: string): string {
+  return html.replace(/<img\b([^>]*?)\s+title=["']dou-width-(\d{2,4})["']([^>]*)>/gi,
+    (_match, before: string, width: string, after: string) =>
+      `<img${before}${after} width="${width}" style="width:${width}px;max-width:100%;height:auto;">`);
+}
+
+export async function renderWechatHtml(markdown: string, title: string, inputSettings?: Partial<WechatStyleSettings>): Promise<string> {
+  const settings = normalizeSettings(inputSettings);
   const style: WechatStyle = {
-    primaryColor: "#0F4C81",
+    primaryColor: settings.primaryColor,
     fontFamily: "-apple-system-font,BlinkMacSystemFont, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei UI, Microsoft YaHei,Arial,sans-serif",
-    fontSize: "16px",
+    fontSize: `${settings.fontSize}px`,
     foreground: "0 0% 3.9%",
-    blockquoteBackground: "#f7f7f7",
+    blockquoteBackground: settings.blockquoteStyle === "accent" ? `${settings.primaryColor}12` : "#f7f7f7",
     accentColor: "#6B7280",
     containerBg: "transparent",
+    lineHeight: String(settings.lineHeight),
+    paragraphSpacing: `${settings.paragraphSpacing}px`,
+    imageRadius: `${settings.imageRadius}px`,
   };
   const renderer = initRenderer({
     countStatus: false, citeStatus: true, isMacCodeBlock: true,
-    isShowLineNumber: false, legend: "alt",
+    isShowLineNumber: settings.showLineNumbers, legend: "alt",
   });
   const rendered = renderMarkdown(markdown, renderer);
   const processed = postProcessHtml(rendered.html, rendered.readingTime, renderer);
-  const content = processed.replace(/<h[12][^>]*>[\s\S]*?<\/h[12]>/, "");
+  const content = applyImageWidths(processed.replace(/<h[12][^>]*>[\s\S]*?<\/h[12]>/, ""));
   const css = normalizeThemeCss(buildCss(baseThemeCss, defaultThemeCss, style));
   const inlined = juice(buildHtmlDocument(title, css, content), {
     inlinePseudoElements: true,
